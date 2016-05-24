@@ -1,0 +1,86 @@
+<div class="container">
+
+    <section class="section">
+        <header class="header">
+            <span class="header__container">
+                <h1 class="header__title">Edit Contact</h1>
+            </span>
+        </header>
+
+        <div class="form__container large" ng-class="{true: 'loading'}[isLoading]">
+            <div class="form__fields">
+
+                <div class="form__group">
+                    <label class="form__label">Name</label>
+                    <a href="#"
+                       editable-text="contact.name"
+                       onbeforesave="patchContact({name: $data})">
+                        {{ contact.name || "empty" }}
+                    </a>
+                </div>
+
+                <div class="form__group">
+                    <label class="form__label">Gender</label>
+                    <a href="#"
+                       editable-select="contact.gender"
+                       onbeforesave="patchContact({gender: $data})"
+                       e-ng-options="g.value as g.name for g in genders">
+                        {{ contact.gender || "empty" }}
+                    </a>
+                </div>
+
+                <div class="form__group">
+                    <label class="form__label">Job Title</label>
+                    <a href="#"
+                       editable-text="contact.jobTitle"
+                       onbeforesave="patchContact({jobTitle: $data})">
+                        {{ contact.jobTitle || "empty" }}
+                    </a>
+                </div>
+
+                <div class="form__group">
+                    <label class="form__label">Address</label>
+                    <a href="#"
+                       editable-text="contact.address"
+                       onbeforesave="patchContact({address: $data})">
+                        {{ contact.address || "empty" }}
+                    </a>
+                </div>
+                <div class="form__group">
+                    <label class="form__label">Phone</label>
+                    <a href="#"
+                       editable-text="contact.phoneNumbers"
+                       onbeforesave="patchContact({phoneNumbers: $data})">
+                        {{ contact.phoneNumbers || "empty" }}
+                    </a>
+                </div>
+                <div class="form__group">
+                    <label class="form__label">Email</label>
+                    <a href="#"
+                       editable-text="contact.email"
+                       onbeforesave="patchContact({email: $data})">
+                        {{ contact.email || "empty" }}
+                    </a>
+                </div>
+
+                <div class="form__group">
+                    <label class="form__label">Status</label>
+                    <a href="#"
+                       editable-select="contact.status"
+                       onbeforesave="patchContact({status: $data})"
+                       e-ng-options="s.value as s.name for s in statuses">
+                        {{ ['deleted','active'][contact.status] || "empty" }}
+                    </a>
+                </div>
+
+            </div>
+            <div class="form__picture">
+                picture
+            </div>
+        </div>
+
+        <a ui-sref="app.contacts"
+           class="btn btn--default">Back</a>
+
+    </section>
+</div>

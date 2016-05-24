@@ -1,0 +1,30 @@
+[
+    "/angularjs/angular.js",
+    "/angularjs/angular.min.js",
+    ["/angular-ui-router/release/angular-ui-router.min.js", "/angular-ui-router/angular-ui-router.min.js"],
+    "/angular-moment/angular-moment.min.js",
+    "/angular-moment/angular-moment.min.js.map",
+    ["/moment/min/moment.min.js", "/moment/moment.min.js"],
+
+    ["/bootstrap/dist/css/bootstrap.css", "/bootstrap/css/bootstrap.css"],
+    ["/bootstrap/dist/css/bootstrap.css.map", "/bootstrap/css/bootstrap.css.map"],
+    ["/bootstrap/scss/", "/bootstrap/scss/"],
+    ["/bootstrap/dist/js/bootstrap.js", "/bootstrap/js/bootstrap.js"],
+
+    "/font-awesome/css/font-awesome.css",
+    "/font-awesome/fonts/",
+
+    ["/html5-form-validation/src/jquery.validation.js", "/html5-form-validation/js/jquery.validation.js"],
+    ["/html5-form-validation/example/jquery.validation.css", "/html5-form-validation/css/jquery.validation.css"],
+
+    ["/jquery/dist/jquery.min.js", "/jquery/jquery.min.js"],
+
+    ["/jquery-typeahead/dist/jquery.typeahead.min.js", "/jquery-typeahead/js/jquery.typeahead.min.js"],
+    ["/jquery-typeahead/src/jquery.typeahead.js", "/jquery-typeahead/js/jquery.typeahead.js"],
+    ["/jquery-typeahead/dist/jquery.typeahead.min.css", "/jquery-typeahead/css/jquery.typeahead.min.css"],
+    ["/jquery-typeahead/src/jquery.typeahead.css", "/jquery-typeahead/css/jquery.typeahead.css"],
+
+    ["/angular-facebook/lib/angular-facebook.js", "/angular-facebook/angular-facebook.js"],
+    ["/angular-xeditable/dist/js/xeditable.min.js", "/angular-xeditable/js/xeditable.min.js"],
+    ["/angular-xeditable/dist//css/xeditable.min.css", "/angular-xeditable/css/xeditable.min.css"]
+]

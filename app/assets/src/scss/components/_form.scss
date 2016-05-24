@@ -1,0 +1,89 @@
+fieldset {
+    position: relative;
+    label {
+        transition: all .2s;
+        position: absolute;
+        top: -4px;
+        left: .8rem;
+        font-size: .75rem;
+        color: #999;
+        margin-bottom: 0;
+        opacity: 0;
+    }
+
+    .form-control {
+        transition: all .2s;
+        padding: .5rem .75rem;
+    }
+
+    &.has-text {
+        label {
+            top: 2px;
+            opacity: 1;
+        }
+        .form-control {
+            //padding: .75rem .75rem .25rem;
+            padding: 1rem .75rem 0rem;
+        }
+    }
+
+    input.error,
+    select.error {
+        background-color: snow;
+        border-color: #e7bebe !important;
+        color: #d95c5c;
+    }
+}
+
+select.form-control {
+    padding: .5rem .75rem;
+}
+
+.error-list {
+    position: absolute;
+    top: .6rem;
+    right: 1rem;
+
+    ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+}
+
+.form__container {
+    display: flex;
+    justify-content: space-between;
+    @include media-breakpoint-down(md) {
+        flex-wrap: wrap;
+    }
+}
+
+.form__fields,
+.form__picture {
+//    flex: 0 0 50%;
+//    max-width: 50%;
+    @include media-breakpoint-down(md) {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+}
+
+.form__fields {
+    min-width: 50%;
+}
+
+.form__picture {
+    text-align: center;
+    @include media-breakpoint-down(md) {
+        order: -1;
+    }
+}
+
+.form__label {
+    min-width: 150px;
+    padding: .5rem 0;
+    @include media-breakpoint-down(xs) {
+        width: 100%;
+    }
+}

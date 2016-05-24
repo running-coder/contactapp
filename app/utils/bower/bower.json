@@ -1,0 +1,19 @@
+{
+  "author": "Tom Bertrand <bertrand.tom@hotmail.com>",
+  "name": "contactapp",
+  "description": "contact book",
+  "version": "0.0.1",
+  "dependencies": {
+    "angularjs": "v1.5.2",
+    "angular-moment": "1.0.0-beta.3",
+    "angular-ui-router": "0.2.18",
+    "angular-facebook": "~0.2.3",
+    "bootstrap": "4.0.0-alpha.2",
+    "font-awesome": "4.5.0",
+    "jquery-typeahead": "559457580bceeb5f8bc2ed5e8999e19d1816af42",
+    "html5-form-validation": "1.5.4.3",
+    "jquery": "3.0.0-beta1",
+    "moment": "2.11.1",
+    "angular-xeditable": "^0.1.10"
+  }
+}

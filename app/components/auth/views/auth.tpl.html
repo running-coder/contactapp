@@ -1,0 +1,18 @@
+<div class="auth__container {{isLoading && 'loading' || ''}}">
+
+    <username>{{auth.name}}</username>
+
+    <button type="button"
+            class="btn btn--facebook"
+            ng-show="!isLogged"
+            ng-disabled="!facebookReady"
+            ng-click="IntentLogin()">Login with Facebook
+    </button>
+
+    <button type="button"
+            class="btn btn--default"
+            ng-show="isLogged"
+            ng-disabled="!facebookReady"
+            ng-click="logout()">Logout
+    </button>
+</div>

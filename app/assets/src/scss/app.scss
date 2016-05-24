@@ -1,0 +1,48 @@
+@import "variables";
+
+// Global Bootstrap import
+//@import "../../libraries/bootstrap/scss/bootstrap";
+
+// Manual Bootstrap import
+// Core variables and mixins
+@import "../../libraries/bootstrap/scss/variables";
+@import "../../libraries/bootstrap/scss/mixins";
+
+// Reset and dependencies
+@import "../../libraries/bootstrap/scss/normalize";
+//@import "../../libraries/bootstrap/scss/print";
+
+// Core CSS
+@import "../../libraries/bootstrap/scss/reboot";
+@import "../../libraries/bootstrap/scss/type";
+@import "../../libraries/bootstrap/scss/grid";
+@import "../../libraries/bootstrap/scss/forms";
+@import "../../libraries/bootstrap/scss/buttons";
+
+// Components
+//@import "../../libraries/bootstrap/scss/animation";
+@import "../../libraries/bootstrap/scss/dropdown";
+@import "../../libraries/bootstrap/scss/list-group";
+//@import "../../libraries/bootstrap/scss/nav";
+//@import "../../libraries/bootstrap/scss/navbar";
+//@import "../../libraries/bootstrap/scss/pagination";
+//@import "../../libraries/bootstrap/scss/pager";
+//@import "../../libraries/bootstrap/scss/labels";
+
+// Utility classes
+@import "../../libraries/bootstrap/scss/utilities";
+@import "../../libraries/bootstrap/scss/utilities-responsive";
+
+
+//@import "mixins/loading";
+@import "components/form";
+@import "components/buttons";
+@import "components/loading";
+@import "partials/theme";
+@import "partials/header";
+@import "pages/contacts";
+
+
+
+
+

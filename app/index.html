@@ -1,0 +1,65 @@
+<!doctype html>
+<html ng-app="app">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1, user-scalable=no, width=device-width">
+
+    <meta name="google-site-verification" content=""/>
+
+    <title>Contactapp</title>
+
+    <link href='http://fonts.googleapis.com/css?family=Lato:400,700' rel='stylesheet' type='text/css'>
+
+    <link rel="stylesheet" href="/assets/libraries/font-awesome/css/font-awesome.css"/>
+    <link rel="stylesheet" href="/assets/libraries/jquery-typeahead/css/jquery.typeahead.css"/>
+    <link rel="stylesheet" href="/assets/libraries/html5-form-validation/css/jquery.validation.css"/>
+    <link rel="stylesheet" href="/assets/libraries/angular-xeditable/css/xeditable.min.css"/>
+    <link rel="stylesheet" href="/assets/dist/css/app.css"/>
+
+    <script src="/assets/libraries/angularjs/angular.js"></script>
+    <script src="/assets/libraries/jquery/jquery.min.js"></script>
+    <script src="/assets/libraries/moment/moment.min.js"></script>
+    <script src="/assets/libraries/angular-ui-router/angular-ui-router.min.js"></script>
+    <script src="/assets/libraries/angular-moment/angular-moment.min.js"></script>
+    <script src="/assets/libraries/angular-facebook/angular-facebook.js"></script>
+    <script src="/assets/libraries/html5-form-validation/js/jquery.validation.js"></script>
+    <script src="/assets/libraries/jquery-typeahead/js/jquery.typeahead.min.js"></script>
+    <script src="/assets/libraries/angular-xeditable/js/xeditable.min.js"></script>
+
+    <script src="/app.js"></script>
+    <script src="/app.config.js"></script>
+
+    <script src="/components/module.js"></script>
+    <script src="/components/auth/services/authService.js"></script>
+    <script src="/components/auth/controllers/authController.js"></script>
+    <script src="/components/auth/directives/auth.js"></script>
+    <script src="/components/auth/directives/username.js"></script>
+
+    <script src="/api/module.js"></script>
+    <script src="/api/services/ApiService.js"></script>
+
+    <script src="/core/module.js"></script>
+    <script src="/core/directives/debug.js"></script>
+    <script src="/core/services/LocalStorageService.js"></script>
+
+    <script src="/layout/module.js"></script>
+    <script src="/layout/controllers/LayoutController.js"></script>
+
+    <script src="/modules/contacts/module.js"></script>
+    <script src="/modules/contacts/controllers/ContactsController.js"></script>
+    <script src="/modules/contacts/controllers/CreateContactController.js"></script>
+    <script src="/modules/contacts/controllers/EditContactController.js"></script>
+    <script src="/modules/contacts/services/ContactsService.js"></script>
+    <script src="/modules/contacts/directives/slideLabel.js"></script>
+    <script src="/modules/contacts/directives/deleteContact.js"></script>
+    <script src="/modules/contacts/directives/validateCreateContact.js"></script>
+
+    <base href="/">
+
+</head>
+<body>
+
+<ui-view></ui-view>
+
+</body>
+</html>

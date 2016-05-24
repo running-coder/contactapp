@@ -1,0 +1,22 @@
+{
+    "author": "Tom Bertrand <bertrand.tom@hotmail.com>",
+    "name": "contactapp",
+    "description": "contact book",
+    "version": "0.0.1",
+    "engines": {
+        "node": ">=0.10.0"
+    },
+    "dependencies": {
+        "actionhero": "13.2.2",
+        "ws": "latest"
+    },
+    "devDependencies": {
+        "mocha": "latest",
+        "should": "latest"
+    },
+    "scripts": {
+        "start": "actionhero start",
+        "actionhero": "actionhero",
+        "test": "NODE_ENV=test mocha"
+    }
+}

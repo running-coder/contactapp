@@ -1,0 +1,73 @@
+.list-group.loading {
+    min-height: 100px;
+}
+
+.list__item {
+    display: flex;
+    align-items: center;
+    padding: .5rem 1.25rem;
+    line-height: 2;
+
+    &:hover {
+        .list__options {
+            display: block;
+        }
+    }
+
+    > * {
+        margin-right: .75rem;
+        &:last-child {
+            margin-right: 0;
+        }
+    }
+}
+
+.list__picture {
+    flex: 0 0 32px;
+    height: 32px;
+    border-radius: 32px;
+    background-size: contain;
+    &.male {
+        background-image: url('/assets/src/img/gender-male.jpg');
+    }
+    &.female {
+        background-image: url('/assets/src/img/gender-female.jpg');
+    }
+}
+
+.list__name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.list__time-ago {
+    font-size: .75rem;
+    color: #999;
+    text-transform: initial;
+    @include media-breakpoint-down(xs) {
+        display: none;
+    }
+}
+
+.list__options {
+    display: none;
+    margin-left: auto;
+    .empty {
+        padding: 0 .75rem;
+    }
+}
+
+.list__filter {
+    display: flex;
+    margin-bottom: 1rem;
+
+    .form-control {
+        width: auto;
+    }
+}
+
+.list__filter-status {
+    margin-left: auto;
+}
+

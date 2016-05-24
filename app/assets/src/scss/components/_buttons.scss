@@ -1,0 +1,54 @@
+.btn {
+    transition: background-color 0.2s ease;
+
+    &--default {
+        color: #373a3c;
+        background-color: #fff;
+        border-color: #ccc;
+        &:focus,
+        &:active,
+        &:hover {
+            color: #373a3c;
+            border-color: #adadad;
+            background-color: #e6e6e6;
+        }
+    }
+
+    &--action {
+        color: #fff;
+        background-color: $color-action;
+        &:focus,
+        &:active,
+        &:hover {
+            color: #fff;
+            background-color: darken($color-action, 10%);
+        }
+    }
+
+    &--secondary {
+        color: #fff;
+        background-color: $color-secondary;
+        &:focus,
+        &:active,
+        &:hover {
+            color: #fff;
+            background-color: darken($color-secondary, 10%);
+        }
+    }
+
+    &--facebook {
+        color: #fff;
+        background-color: #4e69a2;
+        &:focus,
+        &:active,
+        &:hover {
+            color: #fff;
+            background-color: darken(#4e69a2, 10%);
+        }
+    }
+
+
+    &.loading {
+        color: transparent;
+    }
+}
