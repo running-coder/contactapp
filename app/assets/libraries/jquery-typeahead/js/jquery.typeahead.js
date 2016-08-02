@@ -4,21 +4,17 @@
  * Licensed under the MIT license
  *
  * @author Tom Bertrand
- * @version 2.3.4 (2016-3-17)
+ * @version 2.6.1 (2016-5-2)
  * @link http://www.runningcoder.org/jquerytypeahead/
  */;
 (function (factory) {
     if (typeof define === 'function' && define.amd) {
-        // AMD. Register as an anonymous module.
-        define(['jquery'], factory);
+        define('jquery-typeahead', ['jquery'], function (jQuery) {
+            return factory(jQuery);
+        });
     } else if (typeof module === 'object' && module.exports) {
-        // Node/CommonJS
-        module.exports = function (root, jQuery) {
+        module.exports = function (jQuery, root) {
             if (jQuery === undefined) {
-                // require('jQuery') returns a factory that requires window to
-                // build a jQuery instance, we normalize how we use modules
-                // that require this pattern but the window provided is a noop
-                // if it's defined (how jquery works)
                 if (typeof window !== 'undefined') {
                     jQuery = require('jquery');
                 }
@@ -26,20 +22,18 @@
                     jQuery = require('jquery')(root);
                 }
             }
-            factory(jQuery);
-            return jQuery;
+            return factory(jQuery);
         };
     } else {
-        // Browser globals
         factory(jQuery);
     }
 }(function ($) {
 
-    window.Typeahead = {
-        version: '2.3.4'
-    };
-
     "use strict";
+
+    window.Typeahead = {
+        version: '2.6.1'
+    };
 
     /**
      * @private
@@ -58,7 +52,7 @@
         hint: false,            // -> Improved feature, Added support for excessive "space" characters
         accent: false,          // -> Improved feature, define a custom replacement object
         highlight: true,        // -> Added "any" to highlight any word in the template, by default true will only highlight display keys
-        group: false,           // -> Improved feature, Array second index is a custom group title (html allowed)
+        group: false,           // -> Improved feature, Boolean,string,object(key, template (string, function))
         groupOrder: null,       // -> New feature, order groups "asc", "desc", Array, Function
         maxItemPerGroup: null,  // -> Renamed option
         dropdownFilter: false,  // -> Renamed option, true will take group options string will filter on object key
@@ -76,11 +70,14 @@
         href: null,             // -> New feature, String or Function to format the url for right-click & open in new tab on link results
         display: ["display"],   // -> Improved feature, allows search in multiple item keys ["display1", "display2"]
         template: null,
+        groupTemplate: null,    // -> New feature, set a custom template for the groups
         correlativeTemplate: false, // -> New feature, compile display keys, enables multiple key search from the template string
         emptyTemplate: false,   // -> New feature, display an empty template if no result
+        cancelButton: true,     // -> New feature, if text is detected in the input, a cancel button will be available to reset the input (pressing ESC also cancels)
+        loadingAnimation: true, // -> New feature, will display a loading animation when typeahead is doing request / searching for results
         filter: true,           // -> New feature, set to false or function to bypass Typeahead filtering. WARNING: accent, correlativeTemplate, offset & matcher will not be interpreted
         matcher: null,          // -> New feature, add an extra filtering function after the typeahead functions
-        source: null,           // -> Modified feature, source.ignore is now a regex; item.group is a reserved word; Ajax callbacks: done, fail, complete, always
+        source: null,
         callback: {
             onInit: null,
             onReady: null,              // -> New callback, when the Typeahead initial preparation is completed
@@ -103,22 +100,22 @@
             onSubmit: null
         },
         selector: {
-            container: "typeahead-container",
-            result: "typeahead-result",
-            list: "typeahead-list",
-            group: "typeahead-group",
-            item: "typeahead-item",
-            empty: "typeahead-empty",
-            display: "typeahead-display",
-            query: "typeahead-query",
-            filter: "typeahead-filter",
-            filterButton: "typeahead-filter-button",
-            filterValue: "typeahead-filter-value",
-            dropdown: "typeahead-dropdown",
-            dropdownCaret: "typeahead-caret",
-            button: "typeahead-button",
-            backdrop: "typeahead-backdrop",
-            hint: "typeahead-hint"
+            container: "typeahead__container",
+            result: "typeahead__result",
+            list: "typeahead__list",
+            group: "typeahead__group",
+            item: "typeahead__item",
+            empty: "typeahead__empty",
+            display: "typeahead__display",
+            query: "typeahead__query",
+            filter: "typeahead__filter",
+            filterButton: "typeahead__filter-button",
+            dropdown: "typeahead__dropdown",
+            dropdownItem: "typeahead__dropdown-item",
+            button: "typeahead__button",
+            backdrop: "typeahead__backdrop",
+            hint: "typeahead__hint",
+            cancelButton: "typeahead__cancel-button"
         },
         debug: false
     };
@@ -142,8 +139,9 @@
      * #62 IE9 doesn't trigger "input" event when text gets removed (backspace, ctrl+x, etc)
      * @private
      */
-    var _isIE9 = ~navigator.appVersion.indexOf("MSIE 9.");
+    var _isIE9 = ~window.navigator.appVersion.indexOf("MSIE 9.");
 
+    // SOURCE GROUP RESERVED WORDS: ajax, data, url
     // SOURCE ITEMS RESERVED KEYS: group, display, data, matchedKey, compiled, href
 
     /**
@@ -155,33 +153,44 @@
      */
     var Typeahead = function (node, options) {
 
-        this.rawQuery = '';             // Unmodified input query
-        this.query = node.val() || '';  // Input query
-        this.tmpSource = {};            // Temp var to preserve the source order for the searchResult function
-        this.source = {};               // The generated source kept in memory
-        this.isGenerated = null;        // Generated results -> null: not generated, false: generating, true generated
-        this.generatedGroupCount = 0;   // Number of groups generated, if limit reached the search can be done
-        this.groupCount = 0;            // Number of groups, this value gets counted on the initial source unification
-        this.groupBy = "group";         // This option will change according to filtering or custom grouping
-        this.result = {};               // Results based on Source-query match (only contains the displayed elements)
-        this.resultHtml = null;         // HTML Results (displayed elements)
-        this.resultCount = 0;           // Total results based on Source-query match
-        this.resultCountPerGroup = {};  // Total results based on Source-query match per group
-        this.options = options;         // Typeahead options (Merged default & user defined)
-        this.node = node;               // jQuery object of the Typeahead <input>
-        this.container = null;          // Typeahead container, usually right after <form>
-        this.resultContainer = null;    // Typeahead result container (html)
-        this.item = null;               // The selected item
-        this.xhr = {};                  // Ajax request(s) stack
-        this.hintIndex = null;          // Numeric value of the hint index in the result list
-        this.filters = {                // Filter list for searching, dropdown and dynamic(s)
-            dropdown: {},               // Dropdown menu if options.dropdownFilter is set
-            dynamic: {}                 // Checkbox / Radio / Select to filter the source data
+        this.rawQuery = node.val() || '';   // Unmodified input query
+        this.query = node.val() || '';      // Input query
+        this.namespace = '.' + node.selector + _namespace; // Every Typeahead instance gets its own namespace for events
+        this.tmpSource = {};                // Temp var to preserve the source order for the searchResult function
+        this.source = {};                   // The generated source kept in memory
+        this.isGenerated = null;            // Generated results -> null: not generated, false: generating, true generated
+        this.generatedGroupCount = 0;       // Number of groups generated, if limit reached the search can be done
+        this.groupCount = 0;                // Number of groups, this value gets counted on the initial source unification
+        this.groupBy = "group";             // This option will change according to filtering or custom grouping
+        this.groups = [];                   // Array of all the available groups, used to build the groupTemplate
+        this.result = {};                   // Results based on Source-query match (only contains the displayed elements)
+        this.groupTemplate = '';            // Result template at the {{group}} level
+        this.resultHtml = null;             // HTML Results (displayed elements)
+        this.resultCount = 0;               // Total results based on Source-query match
+        this.resultCountPerGroup = {};      // Total results based on Source-query match per group
+        this.options = options;             // Typeahead options (Merged default & user defined)
+        this.node = node;                   // jQuery object of the Typeahead <input>
+        this.container = null;              // Typeahead container, usually right after <form>
+        this.resultContainer = null;        // Typeahead result container (html)
+        this.item = null;                   // The selected item
+        this.xhr = {};                      // Ajax request(s) stack
+        this.hintIndex = null;              // Numeric value of the hint index in the result list
+        this.filters = {                    // Filter list for searching, dropdown and dynamic(s)
+            dropdown: {},                   // Dropdown menu if options.dropdownFilter is set
+            dynamic: {}                     // Checkbox / Radio / Select to filter the source data
         };
+        this.dropdownFilter = {
+            static: [],                 // Objects that has a value
+            dynamic: []
+        };
+        this.dropdownFilterAll = null;  // The last "all" definition
+
         this.requests = {};             // Store the group:request instead of generating them every time
 
         this.backdrop = {};             // The backdrop object
         this.hint = {};                 // The hint object
+        this.hasDragged = false;        // Will cancel mouseend events if true
+        this.focusOnly = false;         // Focus the input preventing any operations
 
         this.__construct();
 
@@ -258,19 +267,53 @@
                 this.options.maxItemPerGroup = null;
             }
 
-            if (this.options.display && !(this.options.display instanceof Array)) {
+            if (this.options.display && !Array.isArray(this.options.display)) {
                 this.options.display = [this.options.display];
             }
 
-            if (this.options.group && !(this.options.group instanceof Array)) {
-                this.options.group = [this.options.group];
+            if (this.options.group) {
+                if (!Array.isArray(this.options.group)) {
+                    if (typeof this.options.group === "string") {
+                        this.options.group = {
+                            key: this.options.group
+                        }
+                    } else if (typeof this.options.group === "boolean") {
+                        this.options.group = {
+                            key: 'group'
+                        }
+                    }
+
+                    this.options.group.key = this.options.group.key || "group";
+                }
+                // {debug}
+                else {
+                    if (this.options.debug) {
+                        _debug.log({
+                            'node': this.node.selector,
+                            'function': 'extendOptions()',
+                            'message': 'options.group must be a boolean|string|object as of 2.5.0'
+                        });
+
+                        _debug.print();
+                    }
+                }
+                // {/debug}
             }
 
             if (this.options.highlight && !~["any", true].indexOf(this.options.highlight)) {
                 this.options.highlight = false;
             }
 
-            if (this.options.dynamicFilter && !(this.options.dynamicFilter instanceof Array)) {
+            if (this.options.dropdownFilter && this.options.dropdownFilter instanceof Object) {
+                if (!Array.isArray(this.options.dropdownFilter)) {
+                    this.options.dropdownFilter = [this.options.dropdownFilter];
+                }
+                for (var i = 0, ii = this.options.dropdownFilter.length; i < ii; ++i) {
+                    this.dropdownFilter[this.options.dropdownFilter[i].value ? 'static' : 'dynamic'].push(this.options.dropdownFilter[i]);
+                }
+            }
+
+            if (this.options.dynamicFilter && !Array.isArray(this.options.dynamicFilter)) {
                 this.options.dynamicFilter = [this.options.dynamicFilter]
             }
 
@@ -297,12 +340,16 @@
                 }
             }
 
+            if (this.options.groupTemplate) {
+                this.groupTemplate = this.options.groupTemplate;
+            }
+
             if (this.options.resultContainer) {
                 if (typeof this.options.resultContainer === "string") {
                     this.options.resultContainer = $(this.options.resultContainer);
                 }
 
-                if (!(this.options.resultContainer instanceof jQuery) || !this.options.resultContainer[0]) {
+                if (!(this.options.resultContainer instanceof $) || !this.options.resultContainer[0]) {
                     // {debug}
                     if (this.options.debug) {
                         _debug.log({
@@ -319,8 +366,8 @@
                 }
             }
 
-            if (this.options.group && typeof this.options.group[0] === "string" && this.options.maxItemPerGroup) {
-                this.groupBy = this.options.group[0];
+            if (this.options.maxItemPerGroup && this.options.group && this.options.group.key) {
+                this.groupBy = this.options.group.key;
             }
 
             // Compatibility onClick callback
@@ -346,38 +393,87 @@
 
         unifySourceFormat: function () {
 
-            if (this.options.source instanceof Array) {
+            this.groupCount = 0;
+
+            // source: ['item1', 'item2', 'item3']
+            if (Array.isArray(this.options.source)) {
                 this.options.source = {
                     group: {
                         data: this.options.source
                     }
                 };
 
-                this.groupCount += 1;
+                this.groupCount = 1;
                 return true;
             }
 
-            if (typeof this.options.source.data !== 'undefined' || typeof this.options.source.url !== 'undefined') {
+            // source: "http://www.test.com/url.json"
+            if (typeof this.options.source === "string") {
+                this.options.source = {
+                    group: {
+                        ajax: {
+                            url: this.options.source
+                        }
+                    }
+                };
+            }
+
+            if (this.options.source.ajax) {
+                this.options.source = {
+                    group: {
+                        ajax: this.options.source.ajax
+                    }
+                };
+            }
+
+
+            // source: {data: ['item1', 'item2'], url: "http://www.test.com/url.json"}
+            if (this.options.source.url || this.options.source.data) {
                 this.options.source = {
                     group: this.options.source
                 };
             }
 
-            var groupSource;
+            var group,
+                groupSource,
+                tmpAjax;
 
-            for (var group in this.options.source) {
+            for (group in this.options.source) {
                 if (!this.options.source.hasOwnProperty(group)) continue;
 
                 groupSource = this.options.source[group];
 
-                // Backward compatibility for source.url declaration
-                if (typeof groupSource === "string" || groupSource instanceof Array) {
+                // source: {group: "http://www.test.com/url.json"}
+                if (typeof groupSource === "string") {
                     groupSource = {
-                        url: groupSource
+                        ajax: {
+                            url: groupSource
+                        }
                     };
                 }
 
-                if (!groupSource.data && !groupSource.url) {
+                // source: {group: {url: ["http://www.test.com/url.json", "json.path"]}}
+                tmpAjax = groupSource.url || groupSource.ajax;
+                if (Array.isArray(tmpAjax)) {
+                    groupSource.ajax = typeof tmpAjax[0] === "string" ? {
+                        url: tmpAjax[0]
+                    } : tmpAjax[0];
+                    groupSource.ajax.path = groupSource.ajax.path || tmpAjax[1] || null;
+                    delete groupSource.url;
+                } else {
+                    // source: {group: {url: {url: "http://www.test.com/url.json", method: "GET"}}}
+                    // source: {group: {url: "http://www.test.com/url.json", dataType: "jsonp"}}
+                    if (typeof groupSource.url === "object") {
+                        groupSource.ajax = groupSource.url;
+                    } else if (typeof groupSource.url === "string") {
+                        groupSource.ajax = {
+                            url: groupSource.url
+                        };
+                    }
+                    delete groupSource.url;
+                }
+
+                if (!groupSource.data && !groupSource.ajax) {
 
                     // {debug}
                     if (this.options.debug) {
@@ -385,7 +481,7 @@
                             'node': this.node.selector,
                             'function': 'unifySourceFormat()',
                             'arguments': JSON.stringify(this.options.source),
-                            'message': 'Undefined "options.source.' + group + '.[data|url]" is Missing - Typeahead dropped'
+                            'message': 'Undefined "options.source.' + group + '.[data|ajax]" is Missing - Typeahead dropped'
                         });
 
                         _debug.print();
@@ -395,33 +491,14 @@
                     return false;
                 }
 
-                if (groupSource.display && !(groupSource.display instanceof Array)) {
+                if (groupSource.display && !Array.isArray(groupSource.display)) {
                     groupSource.display = [groupSource.display];
-                }
-
-                if (groupSource.ignore) {
-                    if (!(groupSource.ignore instanceof RegExp)) {
-
-                        // {debug}
-                        if (this.options.debug) {
-                            _debug.log({
-                                'node': this.node.selector,
-                                'function': 'unifySourceFormat()',
-                                'arguments': JSON.stringify(groupSource.ignore),
-                                'message': 'Invalid ignore RegExp.'
-                            });
-
-                            _debug.print();
-                        }
-                        // {/debug}
-
-                        delete groupSource.ignore;
-                    }
                 }
 
                 this.options.source[group] = groupSource;
 
-                this.groupCount += 1;
+                this.groupCount++;
+
             }
 
             return true;
@@ -452,27 +529,23 @@
 
             var scope = this,
                 events = [
-                    'focus' + _namespace,
-                    'input' + _namespace,
-                    'propertychange' + _namespace,  // IE8 Fix
-                    'keydown' + _namespace,
-                    'keyup' + _namespace,           // IE9 Fix
-                    'dynamic' + _namespace,
-                    'generateOnLoad' + _namespace
+                    'focus' + this.namespace,
+                    'input' + this.namespace,
+                    'propertychange' + this.namespace,  // IE8 Fix
+                    'keydown' + this.namespace,
+                    'keyup' + this.namespace,           // IE9 Fix
+                    'dynamic' + this.namespace,
+                    'generate' + this.namespace
                 ];
 
-            this.container.off(_namespace).on("click" + _namespace + ' touchstart' + _namespace, function (e) {
-                //#146 allow bubbling
-                //e.stopPropagation();
-                if (scope.options.dropdownFilter &&
-                    scope.container.hasClass('filter') && !$(e.target).closest('.' + scope.options.selector.dropdown.replace(" ", "."))[0]) {
-
-                    scope.container.removeClass('filter');
-                }
+            //#149 - Adding support for Mobiles
+            $('html').on("touchmove", function () {
+                scope.hasDragged = true;
+            }).on("touchstart", function () {
+                scope.hasDragged = false;
             });
 
             this.node.closest('form').on("submit", function (e) {
-
                 if (scope.options.mustSelectItem && scope.helper.isEmpty(scope.item)) {
                     e.preventDefault();
                     return;
@@ -490,15 +563,22 @@
             // IE8 fix
             var preventNextEvent = false;
 
-            this.node.off(_namespace).on(events.join(' '), function (e) {
+            this.node.off(this.namespace).on(events.join(' '), function (e) {
 
                 switch (e.type) {
+                    case "generate":
+                        scope.isGenerated = null;
+                        scope.generateSource();
+                        break;
                     case "focus":
+                        if (scope.focusOnly) {
+                            scope.focusOnly = false;
+                            break;
+                        }
                         if (scope.options.backdropOnFocus) {
                             scope.buildBackdropLayout();
                             scope.showLayout();
                         }
-                    case "generateOnLoad":
                         if (scope.options.searchOnFocus && scope.query.length >= scope.options.minLength) {
                             if (scope.isGenerated) {
                                 scope.showLayout();
@@ -517,7 +597,7 @@
                             scope.generateSource();
                         }
                         if (_isIE9 && scope.node[0].value.replace(/^\s+/, '').toString().length < scope.query.length) {
-                            scope.node.trigger('input' + _namespace);
+                            scope.node.trigger('input' + scope.namespace);
                         }
                         break;
                     case "propertychange":
@@ -529,6 +609,8 @@
 
                         scope.rawQuery = scope.node[0].value.toString();
                         scope.query = scope.rawQuery.replace(/^\s+/, '');
+
+                        scope.options.cancelButton && scope.toggleCancelButton();
 
                         if (scope.options.hint && scope.hint.container && scope.hint.container.val() !== '') {
                             if (scope.hint.container.val().indexOf(scope.rawQuery) !== 0) {
@@ -568,7 +650,7 @@
             });
 
             if (this.options.generateOnLoad) {
-                this.node.trigger('generateOnLoad' + _namespace);
+                this.node.trigger('generate' + this.namespace);
             }
 
         },
@@ -581,6 +663,7 @@
 
             this.generatedGroupCount = 0;
             this.isGenerated = false;
+            this.options.loadingAnimation && this.container.addClass('loading');
 
             if (!this.helper.isEmpty(this.xhr)) {
                 for (var i in this.xhr) {
@@ -642,19 +725,16 @@
                 }
 
                 // Get group source from data
-                if (groupSource.data && !groupSource.url) {
-
+                if (groupSource.data && !groupSource.ajax) {
                     this.populateSource(
-                        typeof groupSource.data === "function" &&
-                        groupSource.data() ||
-                        groupSource.data,
+                        $.extend(true, [], groupSource.data),
                         group
                     );
                     continue;
                 }
 
                 // Get group source from Ajax / JsonP
-                if (groupSource.url) {
+                if (groupSource.ajax) {
                     if (!this.requests[group]) {
                         this.requests[group] = this.generateRequestObject(group);
                     }
@@ -670,72 +750,75 @@
             var scope = this,
                 groupSource = this.options.source[group];
 
-            if (!(groupSource.url instanceof Array)) {
-                groupSource.url = [groupSource.url];
-            }
-
             var xhrObject = {
                 request: {
-                    url: null,
+                    url: groupSource.ajax.url || null,
                     dataType: 'json',
                     beforeSend: function (jqXHR, options) {
+                        // Important to call .abort() in case of dynamic requests
                         scope.xhr[group] = jqXHR;
 
-                        var beforeSend = scope.requests[group].extra.beforeSend || groupSource.url[0].beforeSend;
-
+                        var beforeSend = scope.requests[group].callback.beforeSend || groupSource.ajax.beforeSend;
                         typeof beforeSend === "function" && beforeSend.apply(null, arguments);
                     }
                 },
+                callback: {
+                    beforeSend: null,
+                    done: null,
+                    fail: null,
+                    then: null,
+                    always: null
+                },
                 extra: {
-                    path: null,
-                    group: group,
-                    callback: {
-                        done: null,
-                        fail: null,
-                        complete: null,
-                        always: null
-                    }
+                    path: groupSource.ajax.path || null,
+                    group: group
                 },
                 validForGroup: [group]
             };
 
+            if (typeof groupSource.ajax !== "function") {
+                if (groupSource.ajax instanceof Object) {
+                    xhrObject = this.extendXhrObject(xhrObject, groupSource.ajax);
+                }
+
+                if (Object.keys(this.options.source).length > 1) {
+                    for (var _group in this.requests) {
+                        if (!this.requests.hasOwnProperty(_group)) continue;
+                        if (this.requests[_group].isDuplicated) continue;
+
+                        if (xhrObject.request.url && xhrObject.request.url === this.requests[_group].request.url) {
+                            this.requests[_group].validForGroup.push(group);
+                            xhrObject.isDuplicated = true;
+                            delete xhrObject.validForGroup;
+                        }
+                    }
+                }
+            }
+
+            return xhrObject;
+
+        },
+
+        extendXhrObject: function (xhrObject, groupRequest) {
+
+            if (typeof groupRequest.callback === "object") {
+                xhrObject.callback = groupRequest.callback;
+                delete groupRequest.callback;
+            }
+
+            // #132 Fixed beforeSend when using a function as the request object
+            if (typeof groupRequest.beforeSend === "function") {
+                xhrObject.callback.beforeSend = groupRequest.beforeSend;
+                delete groupRequest.beforeSend;
+            }
+
             // Fixes #105 Allow user to define their beforeSend function.
-            Object.defineProperty(xhrObject.request, 'beforeSend', {writable: false});
+            // Fixes #181 IE8 incompatibility
+            xhrObject.request = $.extend(true, xhrObject.request, groupRequest/*, {beforeSend: xhrObject.request.beforeSend}*/);
 
-            if (groupSource.url[0] instanceof Object) {
-
-                if (groupSource.url[0].callback) {
-                    xhrObject.extra.callback = groupSource.url[0].callback;
-                    delete groupSource.url[0].callback;
-                }
-
-                xhrObject.request = $.extend(true, xhrObject.request, groupSource.url[0]);
-
-            } else if (typeof groupSource.url[0] === "string") {
-                xhrObject.request.url = groupSource.url[0];
-            }
-            if (groupSource.url[1] && typeof groupSource.url[1] === "string") {
-                xhrObject.extra.path = groupSource.url[1];
-            }
-
-            if (xhrObject.request.dataType.toLowerCase() === 'jsonp') {
-                // JSONP needs unique jsonpCallback name to run concurrently
-                xhrObject.request.jsonpCallback = 'callback_' + group;
-            }
-
-            var stringRequest;
-
-            for (var _group in this.requests) {
-                if (!this.requests.hasOwnProperty(_group)) continue;
-
-                stringRequest = JSON.stringify(this.requests[_group].request);
-
-                if (stringRequest === JSON.stringify(xhrObject.request)) {
-                    this.requests[_group].validForGroup.push(group);
-                    xhrObject.isDuplicated = true;
-                    delete xhrObject.validForGroup;
-                    break;
-                }
+            // JSONP needs a unique jsonpCallback to run concurrently
+            if (xhrObject.request.dataType.toLowerCase() === 'jsonp' && !xhrObject.request.jsonpCallback) {
+                xhrObject.request.jsonpCallback = 'callback_' + xhrObject.extra.group;
             }
 
             return xhrObject;
@@ -752,17 +835,18 @@
                 return;
             }
 
+
             for (var group in this.requests) {
                 if (!this.requests.hasOwnProperty(group)) continue;
                 if (this.requests[group].isDuplicated) continue;
 
                 (function (group, xhrObject) {
 
-                    if (typeof scope.options.source[group].url[0] === "function") {
+                    if (typeof scope.options.source[group].ajax === "function") {
 
-                        var _groupRequest = scope.options.source[group].url[0].call(scope, scope.query);
+                        var _groupRequest = scope.options.source[group].ajax.call(scope, scope.query);
+                        xhrObject = scope.extendXhrObject(xhrObject, _groupRequest);
 
-                        xhrObject.request = $.extend(true, xhrObject.request, _groupRequest);
                         if (typeof xhrObject.request !== "object" || !xhrObject.request.url) {
                             // {debug}
                             if (scope.options.debug) {
@@ -776,11 +860,6 @@
                             // {/debug}
                             return;
                         }
-
-                        // #132 Fixed beforeSend when using a function as the request object
-                        if (_groupRequest.beforeSend) {
-                            scope.requests[group].extra.beforeSend = _groupRequest.beforeSend;
-                        }
                     }
 
                     var _request,
@@ -791,7 +870,7 @@
                             xhrObject = $.extend(true, {}, xhrObject);
                             _isExtended = true;
                         }
-                        xhrObject.request.url = xhrObject.request.url.replace('{{query}}', scope.query.sanitize());
+                        xhrObject.request.url = xhrObject.request.url.replace('{{query}}', scope.query);
                     }
 
                     if (xhrObject.request.data) {
@@ -802,7 +881,7 @@
                                     xhrObject = $.extend(true, {}, xhrObject);
                                     _isExtended = true;
                                 }
-                                xhrObject.request.data[i] = xhrObject.request.data[i].replace('{{query}}', scope.query.sanitize());
+                                xhrObject.request.data[i] = xhrObject.request.data[i].replace('{{query}}', scope.query);
                                 break;
                             }
                         }
@@ -811,17 +890,17 @@
                     $.ajax(xhrObject.request).done(function (data, textStatus, jqXHR) {
 
                         var tmpData;
-                        for (var i = 0; i < xhrObject.validForGroup.length; i++) {
+                        for (var i = 0, ii = xhrObject.validForGroup.length; i < ii; i++) {
 
                             _request = scope.requests[xhrObject.validForGroup[i]];
 
-                            if (_request.extra.callback.done instanceof Function) {
+                            if (_request.callback.done instanceof Function) {
 
-                                tmpData = _request.extra.callback.done(data, textStatus, jqXHR);
-                                data = tmpData instanceof Array && tmpData || data;
+                                tmpData = _request.callback.done(data, textStatus, jqXHR);
+                                data = Array.isArray(tmpData) && tmpData || data;
 
                                 // {debug}
-                                if (!(tmpData instanceof Array)) {
+                                if (!Array.isArray(tmpData)) {
                                     if (scope.options.debug) {
                                         _debug.log({
                                             'node': scope.node.selector,
@@ -834,7 +913,7 @@
                                 // {/debug}
                             }
 
-                            scope.populateSource(data, _request.extra.group, _request.extra.path);
+                            scope.populateSource(data, _request.extra.group, _request.extra.path || _request.request.path);
 
                             requestsCount -= 1;
                             if (requestsCount === 0) {
@@ -845,10 +924,9 @@
 
                     }).fail(function (jqXHR, textStatus, errorThrown) {
 
-
-                        for (var i = 0; i < xhrObject.validForGroup.length; i++) {
+                        for (var i = 0, ii = xhrObject.validForGroup.length; i < ii; i++) {
                             _request = scope.requests[xhrObject.validForGroup[i]];
-                            _request.extra.callback.fail instanceof Function && _request.extra.callback.fail(jqXHR, textStatus, errorThrown);
+                            _request.callback.fail instanceof Function && _request.callback.fail(jqXHR, textStatus, errorThrown);
                         }
 
                         // {debug}
@@ -856,25 +934,28 @@
                             _debug.log({
                                 'node': scope.node.selector,
                                 'function': 'Ajax.callback.fail()',
-                                'message': 'Request failed'
+                                'arguments': JSON.stringify(xhrObject.request),
+                                'message': textStatus
                             });
+
+                            console.log(errorThrown);
 
                             _debug.print();
                         }
                         // {/debug}
 
-                    }).then(function (jqXHR, textStatus) {
-
-                        for (var i = 0; i < xhrObject.validForGroup.length; i++) {
-                            _request = scope.requests[xhrObject.validForGroup[i]];
-                            _request.extra.callback.then instanceof Function && _request.extra.callback.then(jqXHR, textStatus);
-                        }
-
                     }).always(function (data, textStatus, jqXHR) {
 
-                        for (var i = 0; i < xhrObject.validForGroup.length; i++) {
+                        for (var i = 0, ii = xhrObject.validForGroup.length; i < ii; i++) {
                             _request = scope.requests[xhrObject.validForGroup[i]];
-                            _request.extra.callback.always instanceof Function && _request.extra.callback.always(data, textStatus, jqXHR);
+                            _request.callback.always instanceof Function && _request.callback.always(data, textStatus, jqXHR);
+                        }
+
+                    }).then(function (jqXHR, textStatus) {
+
+                        for (var i = 0, ii = xhrObject.validForGroup.length; i < ii; i++) {
+                            _request = scope.requests[xhrObject.validForGroup[i]];
+                            _request.callback.then instanceof Function && _request.callback.then(jqXHR, textStatus);
                         }
 
                     });
@@ -897,7 +978,7 @@
 
             var scope = this,
                 groupSource = this.options.source[group],
-                extraData = groupSource.url && groupSource.data;
+                extraData = groupSource.ajax && groupSource.data;
 
             data = typeof path === "string" ? this.helper.namespace(path, data) : data;
 
@@ -916,7 +997,7 @@
                 // {/debug}
             }
 
-            if (!(data instanceof Array)) {
+            if (!Array.isArray(data)) {
                 // {debug}
                 if (this.options.debug) {
                     _debug.log({
@@ -936,7 +1017,7 @@
                     extraData = extraData();
                 }
 
-                if (extraData instanceof Array) {
+                if (Array.isArray(extraData)) {
                     data = data.concat(extraData);
                 }
                 // {debug}
@@ -960,14 +1041,39 @@
                     (groupSource.display[0] === 'compiled' ? groupSource.display[1] : groupSource.display[0]) :
                     (this.options.display[0] === 'compiled' ? this.options.display[1] : this.options.display[0]);
 
-            // @TODO: possibly optimize this?
-            for (var i = 0; i < data.length; i++) {
+            for (var i = 0, ii = data.length; i < ii; i++) {
                 if (typeof data[i] === "string") {
                     tmpObj = {};
                     tmpObj[display] = data[i];
                     data[i] = tmpObj;
                 }
                 data[i].group = group;
+            }
+
+            if (!this.options.dynamic && this.dropdownFilter.dynamic.length) {
+
+                var key,
+                    value,
+                    tmpValues = {};
+
+                for (var i = 0, ii = data.length; i < ii; i++) {
+                    for (var k = 0, kk = this.dropdownFilter.dynamic.length; k < kk; k++) {
+                        key = this.dropdownFilter.dynamic[k].key;
+
+                        value = data[i][key];
+                        if (!value) continue;
+                        if (!this.dropdownFilter.dynamic[k].value) {
+                            this.dropdownFilter.dynamic[k].value = [];
+                        }
+                        if (!tmpValues[key]) {
+                            tmpValues[key] = [];
+                        }
+                        if (!~tmpValues[key].indexOf(value.toLowerCase())) {
+                            tmpValues[key].push(value.toLowerCase());
+                            this.dropdownFilter.dynamic[k].value.push(value);
+                        }
+                    }
+                }
             }
 
             if (this.options.correlativeTemplate) {
@@ -995,8 +1101,8 @@
                 } else {
 
                     // #109 correlativeTemplate can be an array of display keys instead of the complete template
-                    if (this.options.correlativeTemplate instanceof Array) {
-                        for (var i = 0; i < this.options.correlativeTemplate.length; i++) {
+                    if (Array.isArray(this.options.correlativeTemplate)) {
+                        for (var i = 0, ii = this.options.correlativeTemplate.length; i < ii; i++) {
                             compiledTemplate += "{{" + this.options.correlativeTemplate[i] + "}} "
                         }
                     } else {
@@ -1004,7 +1110,7 @@
                             .replace(/<.+?>/g, '');
                     }
 
-                    for (var i = 0; i < data.length; i++) {
+                    for (var i = 0, ii = data.length; i < ii; i++) {
                         data[i]['compiled'] = compiledTemplate.replace(/\{\{([\w\-\.]+)(?:\|(\w+))?}}/g, function (match, index) {
                                 return scope.helper.namespace(index, data[i], 'get', '');
                             }
@@ -1026,7 +1132,7 @@
                 data = this.helper.executeCallback.call(this, this.options.callback.onPopulateSource, [this.node, data, group, path]);
 
                 // {debug}
-                if (!data || !(data instanceof Array)) {
+                if (!data || !Array.isArray(data)) {
                     _debug.log({
                         'node': this.node.selector,
                         'function': 'callback.populateSource()',
@@ -1047,7 +1153,7 @@
                     data = this.helper.executeCallback.call(this, this.options.callback.onCacheSave, [this.node, data, group, path]);
 
                     // {debug}
-                    if (!data || !(data instanceof Array)) {
+                    if (!data || !Array.isArray(data)) {
                         _debug.log({
                             'node': this.node.selector,
                             'function': 'callback.populateSource()',
@@ -1080,7 +1186,7 @@
 
         incrementGeneratedGroup: function () {
 
-            this.generatedGroupCount += 1;
+            this.generatedGroupCount++;
 
             if (this.groupCount !== this.generatedGroupCount) {
                 return;
@@ -1092,13 +1198,19 @@
 
             var sourceKeys = Object.keys(this.options.source);
 
-            for (var i = 0; i < sourceKeys.length; i++) {
+            for (var i = 0, ii = sourceKeys.length; i < ii; i++) {
                 this.source[sourceKeys[i]] = this.tmpSource[sourceKeys[i]];
             }
 
             this.tmpSource = {};
 
-            this.node.trigger('dynamic' + _namespace);
+            if (!this.options.dynamic) {
+                this.buildDropdownItemLayout('dynamic');
+            }
+
+            this.options.loadingAnimation && this.container.removeClass('loading');
+
+            this.node.trigger('dynamic' + this.namespace);
 
         },
 
@@ -1123,30 +1235,26 @@
                 e.preventDefault();
                 if (this.query.length) {
                     this.node.val('')
-                    this.node.trigger('input' + _namespace);
+                    this.node.trigger('input' + this.namespace);
                 } else {
                     this.node.blur();
+                    this.hideLayout();
                 }
                 return;
             }
 
             if (!this.isGenerated || !this.result.length) return;
 
-            var itemList = this.resultContainer.find('> ul > li:not([data-search-group])'),
+            var itemList = this.resultContainer.find('.' + this.options.selector.item),
                 activeItem = itemList.filter('.active'),
                 activeItemIndex = activeItem[0] && itemList.index(activeItem) || null,
                 newActiveItemIndex = null;
 
             if (e.keyCode === 13) {
-
-                // Prevent form submit
-                e.preventDefault();
-
                 if (activeItem.length > 0) {
+                    // Prevent form submit if an element is selected
+                    e.preventDefault();
                     activeItem.find('a:first')[0].click();
-                } else {
-                    // Go through Typeahead form submit
-                    this.node.closest('form').submit();
                 }
                 return;
             }
@@ -1255,7 +1363,7 @@
 
             var scope = this,
                 group,
-                groupBy = this.options.group && typeof this.options.group[0] !== "boolean" ? this.options.group[0] : "group",
+                groupBy = this.groupBy,
                 groupReference = null,
                 item,
                 match,
@@ -1264,6 +1372,7 @@
                 maxItemPerGroup = this.options.maxItemPerGroup,
                 hasDynamicFilters = this.filters.dynamic && !this.helper.isEmpty(this.filters.dynamic),
                 displayKeys,
+                displayValue,
                 missingDisplayKey = {},
                 groupFilter,
                 groupFilterResult,
@@ -1281,16 +1390,21 @@
             for (group in this.source) {
 
                 if (!this.source.hasOwnProperty(group)) continue;
-                if (this.filters.dropdown && this.filters.dropdown.key === "group" && this.filters.dropdown.value !== group) continue; // @TODO, verify this
+                // dropdownFilter by source groups
+                if (this.filters.dropdown && this.filters.dropdown.key === "group" && this.filters.dropdown.value !== group) continue;
 
                 groupFilter = typeof this.options.source[group].filter !== "undefined" ? this.options.source[group].filter : this.options.filter;
                 groupMatcher = typeof this.options.source[group].matcher === "function" && this.options.source[group].matcher || matcher;
 
-                for (var k = 0; k < this.source[group].length; k++) {
+                for (var k = 0, kk = this.source[group].length; k < kk; k++) {
                     if (this.result.length >= this.options.maxItem && !this.options.callback.onResult) break;
                     if (hasDynamicFilters && !this.dynamicFilter.validate.apply(this, [this.source[group][k]])) continue;
 
                     item = this.source[group][k];
+
+                    // dropdownFilter by custom groups
+                    if (this.filters.dropdown && (item[this.filters.dropdown.key] || "").toLowerCase() !== (this.filters.dropdown.value || "").toLowerCase()) continue;
+
                     groupReference = groupBy === "group" ? group : item[groupBy];
 
                     if (groupReference && !this.result[groupReference]) {
@@ -1306,10 +1420,30 @@
 
                     displayKeys = this.options.source[group].display || this.options.display;
 
-                    for (var i = 0; i < displayKeys.length; i++) {
+                    for (var i = 0, ii = displayKeys.length; i < ii; i++) {
+
+                        // #183 Allow searching for deep source object keys
+                        displayValue = /\./.test(displayKeys[i]) ?
+                            this.helper.namespace(displayKeys[i], item) :
+                            item[displayKeys[i]];
+
+                        // #182 Continue looping if empty or undefined key
+                        if (typeof displayValue === 'undefined' || displayValue === '') {
+                            // {debug}
+                            if (this.options.debug) {
+                                missingDisplayKey[i] = {
+                                    display: displayKeys[i],
+                                    data: item
+                                };
+                            }
+                            // {/debug}
+                            continue;
+                        }
+
+                        displayValue = this.helper.cleanStringFromScript(displayValue);
 
                         if (typeof groupFilter === "function") {
-                            groupFilterResult = groupFilter.call(this, item, item[displayKeys[i]]);
+                            groupFilterResult = groupFilter.call(this, item, displayValue);
 
                             // return undefined to skip to next item
                             // return false to attempt the matching function on the next displayKey
@@ -1324,20 +1458,7 @@
                         }
 
                         if (~[undefined, true].indexOf(groupFilter)) {
-                            comparedDisplay = item[displayKeys[i]];
-
-                            if (!comparedDisplay) {
-                                // {debug}
-                                if (this.options.debug) {
-                                    missingDisplayKey[i] = {
-                                        display: displayKeys[i],
-                                        data: item
-                                    };
-                                }
-                                // {/debug}
-                                continue;
-                            }
-
+                            comparedDisplay = displayValue;
                             comparedDisplay = comparedDisplay.toString().toLowerCase();
 
                             if (this.options.accent) {
@@ -1350,7 +1471,7 @@
                                 correlativeMatch = true;
                                 correlativeQuery = comparedQuery.split(' ');
                                 correlativeDisplay = comparedDisplay;
-                                for (var x = 0; x < correlativeQuery.length; x++) {
+                                for (var x = 0, xx = correlativeQuery.length; x < xx; x++) {
                                     if (correlativeQuery[x] === "") continue;
                                     if (!~correlativeDisplay.indexOf(correlativeQuery[x])) {
                                         correlativeMatch = false;
@@ -1363,10 +1484,9 @@
                             if (match < 0 && !correlativeMatch) continue;
                             // @TODO Deprecate these? use matcher instead?
                             if (this.options.offset && match !== 0) continue;
-                            if (this.options.source[group].ignore && this.options.source[group].ignore.test(comparedDisplay)) continue;
 
                             if (groupMatcher) {
-                                groupMatcherResult = groupMatcher.call(this, item, item[displayKeys[i]]);
+                                groupMatcherResult = groupMatcher.call(this, item, displayValue);
 
                                 // return undefined to skip to next item
                                 // return false to attempt the matching function on the next displayKey
@@ -1379,10 +1499,6 @@
                                     item = groupMatcherResult;
                                 }
                             }
-                        }
-
-                        if (this.filters.dropdown) {
-                            if (this.filters.dropdown.value != item[this.filters.dropdown.key]) continue;
                         }
 
                         this.resultCount++;
@@ -1436,13 +1552,12 @@
 
                 for (var group in this.result) {
                     if (!this.result.hasOwnProperty(group)) continue;
-                    for (var i = 0; i < this.result[group].length; i++) {
+                    for (var i = 0, ii = this.result[group].length; i < ii; i++) {
                         displayKey = this.options.source[this.result[group][i].group].display || this.options.display;
                         if (!~displayKeys.indexOf(displayKey[0])) {
                             displayKeys.push(displayKey[0]);
                         }
                     }
-
                     this.result[group].sort(
                         scope.helper.sort(
                             displayKeys,
@@ -1456,13 +1571,12 @@
 
             }
 
-            // @TODO TEST THE SCENARIOS
             var concatResults = [],
                 groupOrder;
 
             if (typeof this.options.groupOrder === "function") {
                 groupOrder = this.options.groupOrder.apply(this, [this.node, this.query, this.result, this.resultCount, this.resultCountPerGroup]);
-            } else if (this.options.groupOrder instanceof Array) {
+            } else if (Array.isArray(this.options.groupOrder)) {
                 groupOrder = this.options.groupOrder;
             } else if (typeof this.options.groupOrder === "string" && ~["asc", "desc"].indexOf(this.options.groupOrder)) {
                 groupOrder = Object.keys(this.result).sort(
@@ -1478,7 +1592,9 @@
                 groupOrder = Object.keys(this.result);
             }
 
-            for (var i = 0; i < groupOrder.length; i++) {
+            this.groups = groupOrder;
+
+            for (var i = 0, ii = groupOrder.length; i < ii; i++) {
                 concatResults = concatResults.concat(this.result[groupOrder[i]] || []);
             }
 
@@ -1497,7 +1613,7 @@
             if (this.options.callback.onLayoutBuiltBefore) {
                 var tmpResultHtml = this.helper.executeCallback.call(this, this.options.callback.onLayoutBuiltBefore, [this.node, this.query, this.result, this.resultHtml]);
 
-                if (tmpResultHtml instanceof jQuery) {
+                if (tmpResultHtml instanceof $) {
                     this.resultHtml = tmpResultHtml;
                 }
                 // {debug}
@@ -1534,195 +1650,234 @@
                 this.container.append(this.resultContainer);
             }
 
+            var emptyTemplate;
+            if (!this.result.length) {
+                if (this.options.emptyTemplate) {
+                    emptyTemplate = typeof this.options.emptyTemplate === "function" ?
+                        this.options.emptyTemplate.call(this, this.query) :
+                        this.options.emptyTemplate.replace(/\{\{query}}/gi, this.helper.cleanStringFromScript(this.query));
+
+                } else {
+                    return;
+                }
+            }
+
             var _query = this.query.toLowerCase();
             if (this.options.accent) {
                 _query = this.helper.removeAccent.call(this, _query);
             }
 
-            var scope = this;
+            var scope = this,
+                groupTemplate = this.groupTemplate || '<ul></ul>',
+                hasEmptyTemplate = false;
 
-            this.resultHtml = $("<ul/>", {
-                "class": this.options.selector.list + (scope.helper.isEmpty(scope.result) ? ' empty' : ''),
-                "html": function () {
+            if (this.groupTemplate) {
+                groupTemplate = $(groupTemplate.replace(/<([^>]+)>\{\{(.+?)}}<\/[^>]+>/g, function (match, tag, group, offset, string) {
+                    var template = '',
+                        groups = group === "group" ? scope.groups : [group];
 
-                    if (scope.options.emptyTemplate && scope.helper.isEmpty(scope.result)) {
+                    if (!scope.result.length) {
+                        if (hasEmptyTemplate === true) return '';
+                        hasEmptyTemplate = true;
 
-                        var _emptyTemplate = typeof scope.options.emptyTemplate === "function" ?
-                            scope.options.emptyTemplate.call(scope, scope.query) :
-                            scope.options.emptyTemplate.replace(/\{\{query}}/gi, scope.query.sanitize());
+                        return '<' + tag + ' class="' + scope.options.selector.empty + '"><a href="javascript:;">' + emptyTemplate + '</a></' + tag + '>';
+                    }
 
-                        if (_emptyTemplate instanceof jQuery && _emptyTemplate[0].nodeName === "LI") {
-                            return _emptyTemplate;
-                        } else {
-                            return $("<li/>", {
-                                "class": scope.options.selector.empty,
-                                "html": $("<a/>", {
-                                    "href": "javascript:;",
-                                    "html": _emptyTemplate
-                                })
+                    for (var i = 0, ii = groups.length; i < ii; ++i) {
+                        template += '<' + tag + ' data-group-template="' + groups[i] + '"><ul></ul></' + tag + '>';
+                    }
+
+                    return template;
+                }));
+            } else {
+                groupTemplate = $(groupTemplate);
+                if (!this.result.length) {
+                    groupTemplate.append(
+                        emptyTemplate instanceof $ ?
+                            emptyTemplate :
+                        '<li class="' + scope.options.selector.empty + '"><a href="javascript:;">' + emptyTemplate + '</a></li>'
+                    );
+                }
+            }
+
+            groupTemplate.addClass(this.options.selector.list + (this.helper.isEmpty(this.result) ? ' empty' : ''));
+
+            var _group,
+                _groupTemplate,
+                _item,
+                _href,
+                _liHtml,
+                _template,
+                _aHtml,
+                _display,
+                _displayKeys,
+                _displayValue,
+                _unusedGroups = this.groupTemplate && this.result.length && scope.groups || [],
+                _tmpIndexOf;
+
+            for (var i = 0, ii = this.result.length; i < ii; ++i) {
+
+                _item = this.result[i];
+                _group = _item['group'];
+                _href = this.options.source[_item.group].href || this.options.href;
+                _display = [];
+                _displayKeys = this.options.source[_item.group].display || this.options.display;
+
+                if (this.options.group) {
+                    _group = _item[this.options.group.key];
+                    if (this.options.group.template) {
+                        if (typeof this.options.group.template === "function") {
+                            _groupTemplate = this.options.group.template(_item);
+                        } else if (typeof this.options.template === "string") {
+                            _groupTemplate = this.options.group.template.replace(/\{\{([\w\-\.]+)}}/gi, function (match, index) {
+                                return scope.helper.namespace(index, _item, 'get', '');
                             });
                         }
                     }
 
-                    for (var i in scope.result) {
-                        if (!scope.result.hasOwnProperty(i)) continue;
-
-                        (function (index, item, ulScope) {
-
-                            var _group = item.group,
-                                _liHtml,
-                                _aHtml,
-                                _display = [],
-                                _displayKeys = scope.options.source[item.group].display || scope.options.display,
-                                _href = scope.options.source[item.group].href || scope.options.href,
-                                _handle,
-                                _template;
-
-                            if (scope.options.group) {
-                                if (scope.options.group[1]) {
-                                    if (typeof scope.options.group[1] === "function") {
-                                        _group = scope.options.group[1](item);
-                                    } else if (typeof scope.options.group[1] === "string") {
-                                        _group = scope.options.group[1].replace(/(\{\{group}})/gi, item[scope.options.group[0]] || _group);
-                                    }
-                                } else if (typeof scope.options.group[0] !== "boolean" && item[scope.options.group[0]]) {
-                                    _group = item[scope.options.group[0]];
-                                }
-                                if (!$(ulScope).find('li[data-search-group="' + _group + '"]')[0]) {
-                                    $(ulScope).append(
-                                        $("<li/>", {
-                                            "class": scope.options.selector.group,
-                                            "html": $("<a/>", {
-                                                "href": "javascript:;",
-                                                "html": _group
-                                            }),
-                                            "data-search-group": _group
-                                        })
-                                    );
-                                }
-                            }
-
-                            _liHtml = $("<li/>", {
-                                "class": scope.options.selector.item,
+                    if (!groupTemplate.find('[data-search-group="' + _group + '"]')[0]) {
+                        (this.groupTemplate ? groupTemplate.find('[data-group-template="' + _group + '"] ul') : groupTemplate).append(
+                            $("<li/>", {
+                                "class": scope.options.selector.group,
                                 "html": $("<a/>", {
-                                    "href": function () {
+                                    "href": "javascript:;",
+                                    "html": _groupTemplate || _group,
+                                    "tabindex": -1
+                                }),
+                                "data-search-group": _group
+                            })
+                        );
+                    }
+                }
 
-                                        if (_href) {
-                                            if (typeof _href === "string") {
-                                                _href = _href.replace(/\{\{([\w\-\.]+)(?:\|(\w+))?}}/g, function (match, index, option) {
+                if (this.groupTemplate && _unusedGroups.length) {
+                    _tmpIndexOf = _unusedGroups.indexOf(_group || _item.group)
+                    if (~_tmpIndexOf) {
+                        _unusedGroups.splice(_tmpIndexOf, 1)
+                    }
+                }
 
-                                                    var value = scope.helper.namespace(index, item, 'get', '');
+                _liHtml = $("<li/>", {
+                    "class": scope.options.selector.item,
+                    "html": $("<a/>", {
+                        // #190 Strange JS-code fragment in href attribute using jQuery version below 1.10
+                        "href": (function () {
+                            if (_href) {
+                                if (typeof _href === "string") {
+                                    _href = _href.replace(/\{\{([^\|}]+)(?:\|([^}]+))*}}/gi, function (match, index, options) {
 
-                                                    // #151 Slugify should be an option, not enforced
-                                                    if (option && option === "slugify") {
-                                                        value = scope.helper.slugify.call(scope, value);
-                                                    }
+                                        var value = scope.helper.namespace(index, _item, 'get', '');
 
-                                                    return value;
-                                                });
-                                            } else if (typeof _href === "function") {
-                                                _href = _href(item);
-                                            }
-                                            item['href'] = _href;
+                                        // #151 Slugify should be an option, not enforced
+                                        options = options && options.split("|") || [];
+                                        if (~options.indexOf('slugify')) {
+                                            value = scope.helper.slugify.call(scope, value);
                                         }
 
-                                        return _href || "javascript:;";
-
-                                    },
-                                    "data-group": _group,
-                                    "data-index": index,
-                                    "html": function () {
-
-                                        _template = (item.group && scope.options.source[item.group].template) || scope.options.template;
-
-                                        if (_template) {
-                                            if (typeof _template === "function") {
-                                                _template = _template.call(scope, scope.query, item);
-                                            }
-
-                                            _aHtml = _template.replace(/\{\{([\w\-\.]+)(?:\|(\w+))?}}/g, function (match, index, option) {
-
-                                                var value = String(scope.helper.namespace(index, item, 'get', '')).sanitize();
-
-                                                if (!option || option !== "raw") {
-                                                    if (scope.options.highlight === true && _query && ~_displayKeys.indexOf(index)) {
-                                                        value = scope.helper.highlight.call(scope, value, _query.split(" "), scope.options.accent)
-                                                    }
-                                                }
-                                                return value;
-                                            });
-                                        } else {
-                                            for (var i = 0; i < _displayKeys.length; i++) {
-                                                _display.push(item[_displayKeys[i]]);
-                                            }
-
-                                            _aHtml = '<span class="' + scope.options.selector.display + '">' + String(_display.join(" ")).sanitize() + '</span>';
-                                        }
-
-                                        if ((scope.options.highlight === true && _query && !_template) || scope.options.highlight === "any") {
-                                            _aHtml = scope.helper.highlight.call(scope, _aHtml, _query.split(" "), scope.options.accent)
-                                        }
-
-                                        $(this).append(_aHtml);
-
-                                    },
-                                    "click": ({"item": item}, function (e) {
-
-                                        if (scope.options.mustSelectItem && scope.helper.isEmpty(item)) {
-                                            e.preventDefault();
-                                            return;
-                                        }
-
-                                        scope.item = item;
-
-                                        if (scope.helper.executeCallback.call(scope, scope.options.callback.onClickBefore, [scope.node, $(this), item, e]) === false) return;
-                                        if ((e.originalEvent && e.originalEvent.defaultPrevented) || e.isDefaultPrevented()) {
-                                            return;
-                                        }
-
-                                        scope.query = scope.rawQuery = item[item.matchedKey].toString();
-                                        scope.node.val(scope.query).focus();
-
-                                        scope.searchResult(true);
-                                        scope.buildLayout();
-                                        scope.hideLayout();
-
-                                        scope.helper.executeCallback.call(scope, scope.options.callback.onClickAfter, [scope.node, $(this), item, e]);
-
-                                    }),
-                                    "mouseenter": function (e) {
-
-                                        $(this).closest('ul').find('li.active').removeClass('active');
-                                        $(this).closest('li').addClass('active');
-
-                                        scope.helper.executeCallback.call(scope, scope.options.callback.onMouseEnter, [scope.node, $(this), item, e]);
-                                    },
-                                    "mouseleave": function (e) {
-
-                                        $(this).closest('li').removeClass('active');
-
-                                        scope.helper.executeCallback.call(scope, scope.options.callback.onMouseLeave, [scope.node, $(this), item, e]);
-                                    }
-                                })
-                            });
-
-                            if (scope.options.group) {
-
-                                _handle = $(ulScope).find('a[data-group="' + _group + '"]:last').closest('li');
-                                if (!_handle[0]) {
-                                    _handle = $(ulScope).find('li[data-search-group="' + _group + '"]');
+                                        return value;
+                                    });
+                                } else if (typeof _href === "function") {
+                                    _href = _href(_item);
                                 }
-                                $(_liHtml).insertAfter(_handle);
+                                _item.href = _href;
+                            }
+                            return _href || "javascript:;";
+                        }()),
+                        "data-group": _group,
+                        "data-index": i,
+                        "html": function () {
 
+                            _template = (_item.group && scope.options.source[_item.group].template) || scope.options.template;
+
+                            if (_template) {
+                                if (typeof _template === "function") {
+                                    _template = _template.call(scope, scope.query, _item);
+                                }
+
+                                _aHtml = _template.replace(/\{\{([^\|}]+)(?:\|([^}]+))*}}/gi, function (match, index, options) {
+
+                                    var value = scope.helper.cleanStringFromScript(String(scope.helper.namespace(index, _item, 'get', '')));
+
+                                    // #151 Slugify should be an option, not enforced
+                                    options = options && options.split("|") || [];
+                                    if (~options.indexOf('slugify')) {
+                                        value = scope.helper.slugify.call(scope, value);
+                                    }
+
+                                    if (!~options.indexOf('raw')) {
+                                        if (scope.options.highlight === true && _query && ~_displayKeys.indexOf(index)) {
+                                            value = scope.helper.highlight.call(scope, value, _query.split(" "), scope.options.accent)
+                                        }
+                                    }
+                                    return value;
+                                });
                             } else {
-                                $(ulScope).append(_liHtml);
+                                for (var i = 0, ii = _displayKeys.length; i < ii; i++) {
+                                    _displayValue = /\./.test(_displayKeys[i]) ?
+                                        scope.helper.namespace(_displayKeys[i], _item) :
+                                        _item[_displayKeys[i]];
+
+                                    if (typeof _displayValue === 'undefined' || _displayValue === '') continue;
+
+                                    _display.push(_displayValue);
+                                }
+
+                                _aHtml = '<span class="' + scope.options.selector.display + '">' + scope.helper.cleanStringFromScript(String(_display.join(" "))) + '</span>';
                             }
 
-                        }(i, scope.result[i], this));
-                    }
+                            if ((scope.options.highlight === true && _query && !_template) || scope.options.highlight === "any") {
+                                _aHtml = scope.helper.highlight.call(scope, _aHtml, _query.split(" "), scope.options.accent)
+                            }
 
+                            $(this).append(_aHtml);
+
+                        }
+                    })
+                });
+
+                (function (i, item, liHtml) {
+                    liHtml.on('click', function (e) {
+                        if (scope.options.mustSelectItem && scope.helper.isEmpty(item)) {
+                            e.preventDefault();
+                            return;
+                        }
+
+                        scope.item = item;
+
+                        if (scope.helper.executeCallback.call(scope, scope.options.callback.onClickBefore, [scope.node, $(this), item, e]) === false) return;
+                        if ((e.originalEvent && e.originalEvent.defaultPrevented) || e.isDefaultPrevented()) {
+                            return;
+                        }
+
+                        scope.query = scope.rawQuery = item[item.matchedKey].toString();
+
+                        scope.focusOnly = true;
+                        scope.node.val(scope.query).focus();
+
+                        scope.searchResult(true);
+                        scope.buildLayout();
+                        scope.hideLayout();
+
+                        scope.helper.executeCallback.call(scope, scope.options.callback.onClickAfter, [scope.node, $(this), item, e]);
+                    });
+                    liHtml.on('mouseenter', function (e) {
+                        scope.helper.executeCallback.call(scope, scope.options.callback.onMouseEnter, [scope.node, $(this), item, e]);
+                    });
+                    liHtml.on('mouseleave', function (e) {
+                        scope.helper.executeCallback.call(scope, scope.options.callback.onMouseLeave, [scope.node, $(this), item, e]);
+                    });
+                }(i, _item, _liHtml));
+
+                (this.groupTemplate ? groupTemplate.find('[data-group-template="' + _group + '"] ul') : groupTemplate).append(_liHtml);
+            }
+
+            if (this.result.length && _unusedGroups.length) {
+                for (var i = 0, ii = _unusedGroups.length; i < ii; ++i) {
+                    groupTemplate.find('[data-group-template="' + _unusedGroups[i] + '"]').remove();
                 }
-            });
+            }
+
+            this.resultHtml = groupTemplate;
 
         },
 
@@ -1807,6 +1962,7 @@
                         'class': this.node.attr('class'),
                         'readonly': true,
                         'unselectable': 'on',
+                        'aria-hidden': 'true',
                         'tabindex': -1,
                         'click': function () {
                             // IE8 Fix
@@ -1829,12 +1985,12 @@
                         _group,
                         _comparedValue;
 
-                    for (var i = 0; i < result.length; i++) {
+                    for (var i = 0, ii = result.length; i < ii; i++) {
 
                         _group = result[i].group;
                         _displayKeys = this.options.source[_group].display || this.options.display;
 
-                        for (var k = 0; k < _displayKeys.length; k++) {
+                        for (var k = 0, kk = _displayKeys.length; k < kk; k++) {
 
                             _comparedValue = String(result[i][_displayKeys[k]]).toLowerCase();
                             if (this.options.accent) {
@@ -1860,26 +2016,13 @@
 
         },
 
-
         buildDropdownLayout: function () {
 
             if (!this.options.dropdownFilter) {
                 return;
             }
 
-            var scope = this,
-                defaultText = "all";
-
-            if (typeof this.options.dropdownFilter === "string") {
-                defaultText = this.options.dropdownFilter
-            } else if (this.options.dropdownFilter instanceof Array) {
-                for (var i = 0; i < this.options.dropdownFilter.length; i++) {
-                    if (this.options.dropdownFilter[i].value === "*" && this.options.dropdownFilter[i].display) {
-                        defaultText = this.options.dropdownFilter[i].display;
-                        break;
-                    }
-                }
-            }
+            var scope = this;
 
             $('<span/>', {
                 "class": this.options.selector.filter,
@@ -1889,17 +2032,18 @@
                         $('<button/>', {
                             "type": "button",
                             "class": scope.options.selector.filterButton,
-                            "html": "<span class='" + scope.options.selector.filterValue + "'>" + defaultText + "</span> <span class='" + scope.options.selector.dropdownCaret + "'></span>",
+                            "style": "display: none;",
                             "click": function (e) {
                                 e.stopPropagation();
                                 scope.container.toggleClass('filter');
 
-                                var _ns = _namespace + '-dropdown-filter';
+                                var _ns = scope.namespace + '-dropdown-filter';
 
                                 $('html').off(_ns);
 
                                 if (scope.container.hasClass('filter')) {
-                                    $('html').one("click" + _ns + " touchstart" + _ns, function () {
+                                    $('html').on("click" + _ns + " touchend" + _ns, function (e) {
+                                        if ($(e.target).closest('.' + scope.options.selector.filter)[0] || scope.hasDragged) return;
                                         scope.container.removeClass('filter');
                                     });
                                 }
@@ -1909,89 +2053,101 @@
 
                     $(this).append(
                         $('<ul/>', {
-                            "class": scope.options.selector.dropdown,
-                            "html": function () {
-
-                                var items = scope.options.dropdownFilter;
-
-                                if (~['string', 'boolean'].indexOf(typeof scope.options.dropdownFilter)) {
-
-                                    items = [];
-                                    for (var group in scope.options.source) {
-                                        if (!scope.options.source.hasOwnProperty(group)) continue;
-                                        items.push({
-                                            key: 'group',
-                                            value: group
-                                        });
-                                    }
-
-                                    items.push({
-                                        key: 'group',
-                                        value: '*',
-                                        display: typeof scope.options.dropdownFilter === "string" && scope.options.dropdownFilter || 'All'
-                                    });
-                                }
-
-                                for (var i = 0; i < items.length; i++) {
-
-                                    (function (i, item, ulScope) {
-
-                                        if ((!item.key && item.value !== "*") || !item.value) {
-
-                                            // {debug}
-                                            if (scope.options.debug) {
-                                                _debug.log({
-                                                    'node': scope.node.selector,
-                                                    'function': 'buildDropdownLayout()',
-                                                    'arguments': JSON.stringify(item),
-                                                    'message': 'WARNING - Missing key or value, skipping dropdown filter."'
-                                                });
-
-                                                _debug.print();
-                                            }
-                                            // {/debug}
-
-                                            return;
-                                        }
-
-                                        if (item.value === '*') {
-                                            $(ulScope).append(
-                                                $("<li/>", {
-                                                    "class": "divider"
-                                                })
-                                            );
-                                        }
-
-                                        $(ulScope).append(
-                                            $("<li/>", {
-                                                "html": $("<a/>", {
-                                                    "href": "javascript:;",
-                                                    "html": item.display || item.value,
-                                                    "click": ({"item": item}, function (e) {
-                                                        e.preventDefault();
-                                                        _selectFilter.apply(scope, [item]);
-                                                    })
-                                                })
-                                            })
-                                        );
-
-                                    }(i, items[i], this));
-
-                                }
-                            }
+                            "class": scope.options.selector.dropdown
                         })
                     );
                 }
             }).insertAfter(scope.container.find('.' + scope.options.selector.query));
 
+        },
+
+        buildDropdownItemLayout: function (type) {
+
+            var scope = this,
+                template,
+                all = typeof this.options.dropdownFilter === 'string' && this.options.dropdownFilter || 'All',
+                ulScope = this.container.find('.' + this.options.selector.dropdown),
+                filter;
+
+            // Use regular groups defined in options.source
+            if (type === 'static' && this.options.dropdownFilter === true || typeof this.options.dropdownFilter === 'string') {
+                this.dropdownFilter.static.push({
+                    key: 'group',
+                    template: '{{group}}',
+                    all: all,
+                    value: Object.keys(this.options.source)
+                });
+            }
+
+            for (var i = 0, ii = this.dropdownFilter[type].length; i < ii; i++) {
+
+                filter = this.dropdownFilter[type][i];
+
+                if (!Array.isArray(filter.value)) {
+                    filter.value = [filter.value];
+                }
+
+                if (filter.all) {
+                    this.dropdownFilterAll = filter.all;
+                }
+
+                for (var k = 0, kk = filter.value.length; k <= kk; k++) {
+
+                    // Only add "all" at the last filter iteration
+                    if (k === kk && (i !== ii - 1)) {
+                        continue;
+                    } else if (k === kk && (i === ii - 1)) {
+                        if (type === 'static' && this.dropdownFilter['dynamic'].length) {
+                            continue;
+                        }
+                    }
+
+                    template = this.dropdownFilterAll || all;
+                    if (filter.value[k]) {
+                        if (filter.template) {
+                            template = filter.template.replace(new RegExp('\{\{' + filter.key + '}}', 'gi'), filter.value[k])
+                        } else {
+                            template = filter.value[k]
+                        }
+                    } else {
+                        this.container.find('.' + scope.options.selector.filterButton).html(template)
+                    }
+
+                    (function (k, filter, template) {
+
+                        ulScope.append(
+                            $("<li/>", {
+                                "class": scope.options.selector.dropdownItem + ' ' + scope.helper.slugify.call(scope, filter.key + '-' + (filter.value[k] || all)),
+                                "html": $("<a/>", {
+                                    "href": "javascript:;",
+                                    "html": template,
+                                    "click": function (e) {
+                                        e.preventDefault();
+                                        _selectFilter.call(scope, {
+                                            key: filter.key,
+                                            value: filter.value[k] || '*',
+                                            template: template
+                                        });
+                                    }
+                                })
+                            })
+                        );
+
+                    }(k, filter, template));
+                }
+            }
+
+            if (this.dropdownFilter[type].length) {
+                this.container.find('.' + scope.options.selector.filterButton).removeAttr('style');
+            }
+
             /**
              * @private
              * Select the filter and rebuild the result group
              *
-             * @param {string} item
+             * @param {object} item
              */
             function _selectFilter(item) {
-
                 if (item.value === "*") {
                     delete this.filters.dropdown;
                 } else {
@@ -2000,15 +2156,13 @@
 
                 this.container
                     .removeClass('filter')
-                    .find('.' + this.options.selector.filterValue)
-                    .html(item.display || item.value);
+                    .find('.' + this.options.selector.filterButton)
+                    .html(item.template);
 
-                this.node.trigger('dynamic' + _namespace);
+                this.node.trigger('dynamic' + this.namespace);
 
                 this.node.focus();
-
             }
-
         },
 
         dynamicFilter: {
@@ -2088,7 +2242,7 @@
                 var scope = this,
                     filter;
 
-                for (var i = 0; i < this.options.dynamicFilter.length; i++) {
+                for (var i = 0, ii = this.options.dynamicFilter.length; i < ii; i++) {
 
                     filter = this.options.dynamicFilter[i];
 
@@ -2096,7 +2250,7 @@
                         filter.selector = $(filter.selector);
                     }
 
-                    if (!(filter.selector instanceof jQuery) || !filter.selector[0] || !filter.key) {
+                    if (!(filter.selector instanceof $) || !filter.selector[0] || !filter.key) {
                         // {debug}
                         if (this.options.debug) {
                             _debug.log({
@@ -2112,9 +2266,9 @@
                     }
 
                     (function (filter) {
-                        filter.selector.off(_namespace).on('change' + _namespace, function () {
+                        filter.selector.off(scope.namespace).on('change' + scope.namespace, function () {
                             scope.dynamicFilter.set.apply(scope, [filter.key, scope.dynamicFilter.getValue(this)]);
-                        }).trigger('change' + _namespace);
+                        }).trigger('change' + scope.namespace);
                     }(filter));
 
                 }
@@ -2147,9 +2301,9 @@
 
             var scope = this;
 
-            $('html').off(_namespace)
-                .on("click" + _namespace + " touchstart" + _namespace, function (e) {
-                    if ($(e.target).closest(scope.container)[0]) return;
+            $('html').off(this.namespace)
+                .on("click" + this.namespace + " touchend" + this.namespace, function (e) {
+                    if ($(e.target).closest(scope.container)[0] || scope.hasDragged) return;
                     scope.hideLayout();
                 });
 
@@ -2173,7 +2327,7 @@
             if (this.options.backdropOnFocus && this.container.hasClass('backdrop')) return;
 
             // Make sure the event gets cleared in case of "ESC"
-            $('html').off(_namespace);
+            $('html').off(this.namespace);
 
             this.helper.executeCallback.call(this, this.options.callback.onHideLayout, [this.node, this.query]);
 
@@ -2193,6 +2347,28 @@
 
         },
 
+        buildCancelButtonLayout: function () {
+            if (!this.options.cancelButton) return;
+            var scope = this;
+
+            $('<span/>', {
+                "class": this.options.selector.cancelButton,
+                "mousedown": function (e) {
+                    // Don't blur the input
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+
+                    scope.node.val('');
+                    scope.node.trigger('input' + scope.namespace);
+                }
+            }).insertBefore(this.node);
+
+        },
+
+        toggleCancelButton: function () {
+            this.container.toggleClass('cancel', !!this.query.length);
+        },
+
         __construct: function () {
             this.extendOptions();
 
@@ -2204,7 +2380,9 @@
 
             this.init();
             this.delegateEvents();
+            this.buildCancelButtonLayout();
             this.buildDropdownLayout();
+            this.buildDropdownItemLayout('static');
 
             this.helper.executeCallback.call(this, this.options.callback.onReady, [this.node]);
         },
@@ -2251,7 +2429,7 @@
 
                 if (string !== "") {
                     string = this.helper.removeAccent.call(this, string);
-                    string = string.replace(/[^-a-z0-9]+/g, '-').replace(/-+/g, '-').trim('-');
+                    string = string.replace(/[^-a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
                 }
 
                 return string;
@@ -2267,7 +2445,7 @@
              */
             sort: function (field, reverse, primer) {
                 var key = function (x) {
-                    for (var i = 0; i < field.length; i++) {
+                    for (var i = 0, ii = field.length; i < ii; i++) {
                         if (typeof x[field[i]] !== 'undefined') {
                             return primer(x[field[i]])
                         }
@@ -2310,7 +2488,7 @@
                 var searchString = accents && this.helper.removeAccent.call(this, string) || string,
                     matches = [];
 
-                if (!(keys instanceof Array)) {
+                if (!Array.isArray(keys)) {
                     keys = [keys];
                 }
 
@@ -2376,6 +2554,17 @@
             },
 
             /**
+             * Clean strings from possible XSS (script and iframe tags)
+             * @param string
+             * @returns {string}
+             */
+            cleanStringFromScript: function (string) {
+                return typeof string === "string" &&
+                    string.replace(/<\/?(?:script|iframe)\b[^>]*>/gm, '') ||
+                    string;
+            },
+
+            /**
              * Executes an anonymous function or a string reached from the window scope.
              *
              * @example
@@ -2409,7 +2598,7 @@
 
                     _callback = callback;
 
-                } else if (typeof callback === "string" || callback instanceof Array) {
+                } else if (typeof callback === "string" || Array.isArray(callback)) {
 
                     if (typeof callback === "string") {
                         callback = [callback, []];
@@ -2580,11 +2769,8 @@
                 return;
             }
 
-            var initNode;
-            for (var i = 0; i < node.length; i++) {
-                initNode = node.length === 1 ? node : $(node.selector.split(',')[i].trim());
-                window.Typeahead[initNode.selector || options.input] = new Typeahead(initNode, options);
-            }
+            return window.Typeahead[options.input || node.selector] = new Typeahead(node, options);
+
         }
 
     };
@@ -2630,28 +2816,17 @@
     _debug.print();
 // {/debug}
 
-    if (!('sanitize' in String.prototype)) {
-        String.prototype.sanitize = function () {
-            var entityMap = {
-                "&": "&amp;",
-                "<": "&lt;",
-                ">": "&gt;",
-                '"': '&quot;',
-                "'": '&#39;',
-                "/": '&#x2F;'
-            };
-
-            return this.replace(/[&<>"'\/]/g, function (s) {
-                return entityMap[s];
-            });
-        };
-    }
-
 // IE8 Shims
     window.console = window.console || {
             log: function () {
             }
         };
+
+    if (!Array.isArray) {
+        Array.isArray = function (arg) {
+            return Object.prototype.toString.call(arg) === '[object Array]';
+        };
+    }
 
     if (!('trim' in String.prototype)) {
         String.prototype.trim = function () {
@@ -2682,6 +2857,6 @@
         };
     }
 
-    return $.proxy($.typeahead, Typeahead);
+    return Typeahead;
 
 }));

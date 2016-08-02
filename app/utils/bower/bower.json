@@ -10,7 +10,7 @@
     "angular-facebook": "~0.2.3",
     "bootstrap": "4.0.0-alpha.2",
     "font-awesome": "4.5.0",
-    "jquery-typeahead": "559457580bceeb5f8bc2ed5e8999e19d1816af42",
+    "jquery-typeahead": "2.6.1",
     "html5-form-validation": "1.5.4.3",
     "jquery": "3.0.0-beta1",
     "moment": "2.11.1",
